@@ -23,6 +23,8 @@ manifest:
       url-base: https://github.com/zephyrproject-rtos
     - name: babblesim
       url-base: https://github.com/BabbleSim
+    - name: mbedtls-upstream
+      url-base: https://github.com/Mbed-TLS
 
   group-filter: [-babblesim, -optional, -testing]
 
@@ -320,9 +322,38 @@ manifest:
     - name: lvgl
       revision: 94ae6c0535aa6ac4b08a75f4ae2c3a08cacb5c41
       path: modules/lib/gui/lvgl
+    - name: mbedtls-3.6.5 # Required for TF-M build only
+      repo-path: mbedtls
+      revision: pull/82/head
+      path: modules/crypto/mbedtls-3.6.5
+      groups:
+        - crypto
     - name: mbedtls
-      revision: c5b06d89c9c498d8fc8659ce31f7e53137b6270f
-      path: modules/crypto/mbedtls
+      revision: pull/81/head
+      path: modules/crypto/mbedtls-4
+      groups:
+        - crypto
+    - name: mbedtls-framework
+      repo-path: mbedtls-framework
+      revision: 421f7a29f79e535fc6497b6cb4767cd7023db20b
+      path: modules/crypto/mbedtls-4/framework
+      groups:
+        - crypto
+    - name: TF-PSA-Crypto
+      revision: pull/1/head
+      path: modules/crypto/mbedtls-4/tf-psa-crypto
+      groups:
+        - crypto
+    - name: tf-psa-crypto-framework
+      repo-path: mbedtls-framework
+      revision: 8ebca5151687a2c75171aa89c0260ebb78ac59c8
+      path: modules/crypto/mbedtls-4/tf-psa-crypto/framework
+      groups:
+        - crypto
+    - name: mldsa-native
+      remote: mbedtls-upstream
+      revision: 5772b4f4a0105694b1203abb582273f78fa951b7
+      path: modules/crypto/mbedtls-4/tf-psa-crypto/drivers/pqcp/mldsa-native
       groups:
         - crypto
     - name: mcuboot
