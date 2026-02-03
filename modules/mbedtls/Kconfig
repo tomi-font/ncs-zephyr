@@ -68,7 +68,17 @@ config MBEDTLS_CFG_FILE
 	  special TLS usage, use available Kconfig options, or select an
 	  alternative config.
 
+config TF_PSA_CRYPTO_CFG_FILE
+	string "TF-PSA-Crypto configuration file"
+	depends on MBEDTLS_BUILTIN
+	default "config-tf-psa-crypto.h"
+	help
+	  Use the default TF-PSA-Crypto configuration header file provided by
+	  Zephyr. In this header file all the features are selected by means
+	  of Kconfigs.
+
 rsource "Kconfig.mbedtls"
+rsource "Kconfig.tf-psa-crypto"
 rsource "Kconfig.ciphersuites"
 rsource "Kconfig.deprecated"
 
