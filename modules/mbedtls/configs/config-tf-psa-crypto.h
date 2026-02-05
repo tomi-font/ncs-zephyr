@@ -7,6 +7,8 @@
 #ifndef CONFIG_TF_PSA_CRYPTO_H
 #define CONFIG_TF_PSA_CRYPTO_H
 
+#include "config-psa.h"
+
 #define MBEDTLS_PLATFORM_C
 #define MBEDTLS_PLATFORM_MEMORY
 #define MBEDTLS_MEMORY_BUFFER_ALLOC_C
