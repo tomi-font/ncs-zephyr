@@ -7,6 +7,26 @@
 #ifndef CONFIG_TF_PSA_CRYPTO_H
 #define CONFIG_TF_PSA_CRYPTO_H
 
+/* [TO BE IMPROVED]
+ * This is a dirty fix to overcome a pre-existing problem: TLS/X509 build
+ * symbols influence crypto ones. This not ideal even before the split, but
+ * at least it was working. Now that we split the configuration headers in
+ * 2 we need to include the TLS/X509 configuration header file here, which
+ * is not good.
+ * Of course the solution is to:
+ * - have 1:1 mapping between Kconfigs and build symbols
+ * - let each Kconfig enable ONLY 1 build symbol
+ * - resolve all the dependencies at Kconfig level instead of doing that in the
+ *   configuration header file.
+ */
+#include "config-mbedtls.h"
+
+/* [TO BE IMPROVED]
+ * PSA_WANT build symbols are selected in "config-psa.h" and that file is
+ * automatically generated, while this one is still manually maintained.
+ * A nice improvement for the future is to have all of these build symbols
+ * being auto-generated starting from the official "cryto_config.h" file.
+ */
 #include "config-psa.h"
 
 #define MBEDTLS_PLATFORM_C
