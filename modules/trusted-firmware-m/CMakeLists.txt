@@ -301,7 +301,7 @@ if(CONFIG_BUILD_WITH_TFM)
       -DPython3_EXECUTABLE=${Python3_EXECUTABLE}
       ${TFM_CMAKE_ARGS}
       $<GENEX_EVAL:$<TARGET_PROPERTY:zephyr_property_target,TFM_CMAKE_OPTIONS>>
-      -DMBEDCRYPTO_PATH=$<IF:$<BOOL:$<TARGET_PROPERTY:zephyr_property_target,TFM_MBEDCRYPTO_PATH>>,$<TARGET_PROPERTY:zephyr_property_target,TFM_MBEDCRYPTO_PATH>,${ZEPHYR_MBEDTLS_MODULE_DIR}>
+      -DMBEDCRYPTO_PATH=$<IF:$<BOOL:$<TARGET_PROPERTY:zephyr_property_target,TFM_MBEDCRYPTO_PATH>>,$<TARGET_PROPERTY:zephyr_property_target,TFM_MBEDCRYPTO_PATH>,${ZEPHYR_MBEDTLS_MODULE_DIR}/../mbedtls-3.6.5>
       -DCMSIS_PATH=${ZEPHYR_CMSIS_6_MODULE_DIR}
       ${ZEPHYR_TRUSTED_FIRMWARE_M_MODULE_DIR}
     WORKING_DIRECTORY ${TFM_BINARY_DIR}
@@ -414,10 +414,16 @@ if(CONFIG_BUILD_WITH_TFM)
     ${TFM_INTERFACE_INCLUDE_DIR}/crypto_keys
     ${ZEPHYR_BASE}/modules/mbedtls/configs
     )
-  # Pass down the MbedTLS configuration file to use.
-  target_compile_definitions(tfm_api PUBLIC
-    MBEDTLS_CONFIG_FILE="${CONFIG_MBEDTLS_CFG_FILE}"
-    )
+  # MBEDTLS_CONFIG_FILE and TF_PSA_CRYPTO_CONFIG_FILE are exposed by Mbed TLS and TF-PSA-Crypto
+  # libraries, but here we need to override the value because TF-M uses the previous version of
+  # Mbed TLS internally (i.e. 3.6.5).
+  # Note: overriding is done by undefinining + defining, because otherwise CMake would emit
+  #       a warning for variable re-definition.
+  target_compile_options(tfm_api PRIVATE
+    -UMBEDTLS_CONFIG_FILE
+    -UTF_PSA_CRYPTO_CONFIG_FILE
+    -DMBEDTLS_CONFIG_FILE="${ZEPHYR_BASE}/modules/mbedtls/configs/config-mbedtls-3.6.5.h"
+  )
 
   zephyr_library_link_libraries(
     ${TFM_INTERFACE_LIB_DIR}/s_veneers.o
