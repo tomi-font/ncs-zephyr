@@ -425,6 +425,11 @@ if(CONFIG_BUILD_WITH_TFM)
     -DMBEDTLS_CONFIG_FILE="${ZEPHYR_BASE}/modules/mbedtls/configs/config-mbedtls-3.6.5.h"
   )
 
+  # Add interface headers to zephr_interface.
+  zephyr_include_directories(
+    ${TFM_INTERFACE_INCLUDE_DIR}
+  )
+
   zephyr_library_link_libraries(
     ${TFM_INTERFACE_LIB_DIR}/s_veneers.o
     )
