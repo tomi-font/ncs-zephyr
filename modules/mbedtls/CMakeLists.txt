@@ -65,6 +65,18 @@ if(CONFIG_MBEDTLS)
       mbedx509
       tfpsacrypto
     )
+    # == DIRTY FIX ==
+    # Copy header files related to legacy crypto to the build folder in a path
+    # that does not contain "private" in the name. This allow leagcy include
+    # like "#include <mbedtls/entropy.h>" to still work. This is a temporary
+    # fix in order not to break too many external modules (ex: openthread or hostap)
+    # which are still referencing legacy includes. However these files are private
+    # now and all the users of Mbed TLS should transition to PSA API as soon as
+    # possible!
+    if(CONFIG_MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS)
+      file(GLOB legacy_headers ${ZEPHYR_MBEDTLS_MODULE_DIR}/tf-psa-crypto/drivers/builtin/include/mbedtls/private/*.h)
+      file(COPY ${legacy_headers} DESTINATION ${CMAKE_BINARY_DIR}/legacy-mbedtls-headers/mbedtls/)
+    endif()
 
     target_include_directories(mbedTLS INTERFACE
       ${CMAKE_CURRENT_SOURCE_DIR}/configs
