@@ -43,6 +43,30 @@ if(CONFIG_MBEDTLS)
     target_link_libraries(mbedx509 PRIVATE zephyr_interface)
     target_link_libraries(mbedtls PRIVATE zephyr_interface)
 
+    set(MBEDTLS_EXPORT_REMOVED_HEADERS  OFF)
+    # == DIRTY FIX ==
+    # HostAP still heavily depends on legacy Mbed TLS crypto. Luckily most of
+    # that support is still available and it can still be accessed somehow,
+    # but DHM and DES modules were removed from tf-psa-crypto. As a temporary solution
+    # they are added back in TF-PSA-Crypto and they are compiled with the
+    # builtin library when crypto features of HostAP library are enabled.
+    if(CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_ALT)
+      target_sources(builtin PRIVATE ${ZEPHYR_MBEDTLS_MODULE_DIR}/tf-psa-crypto/removed/dhm.c)
+      target_sources(builtin PRIVATE ${ZEPHYR_MBEDTLS_MODULE_DIR}/tf-psa-crypto/removed/des.c)
+      target_include_directories(builtin PRIVATE ${ZEPHYR_MBEDTLS_MODULE_DIR}/tf-psa-crypto/removed)
+      # These build symbols cannot be set in tf-psa-crypto configuration header
+      # file otherwise the build will fail, so we manually set them here only
+      # to build these legacy modules.
+      target_compile_definitions(builtin PRIVATE
+        # Setting legacy build symbols is not allowed so we need to set this
+        # to bypass the check.
+        -DTF_PSA_CRYPTO_CONFIG_CHECK_BYPASS
+        -DMBEDTLS_DES_C
+        -DMBEDTLS_DHM_C
+      )
+      set(MBEDTLS_EXPORT_REMOVED_HEADERS  ON)
+    endif()
+
     # Linking to "zephyr_interface" doesn't work in these case because these
     # are object libraries so properties are NOT propagated. We need to
     # explicitly do this.
@@ -65,6 +89,7 @@ if(CONFIG_MBEDTLS)
       mbedx509
       tfpsacrypto
     )
+
     # == DIRTY FIX ==
     # Copy header files related to legacy crypto to the build folder in a path
     # that does not contain "private" in the name. This allow leagcy include
@@ -83,6 +108,12 @@ if(CONFIG_MBEDTLS)
       ${CMAKE_CURRENT_SOURCE_DIR}/include
       ${CMAKE_BINARY_DIR}/legacy-mbedtls-headers/
     )
+
+    if(MBEDTLS_EXPORT_REMOVED_HEADERS)
+      target_include_directories(mbedTLS INTERFACE
+        ${ZEPHYR_MBEDTLS_MODULE_DIR}/tf-psa-crypto/removed
+      )
+    endif()
 
     # Add another library to provide Zephyr support
     zephyr_library_named(zephyr_mbedtls_support)
