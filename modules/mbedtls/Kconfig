@@ -13,6 +13,18 @@ config MBEDTLS_PROMPTLESS
 	  mbed TLS menu prompt and instead handle the selection of MBEDTLS from
 	  dependent sub-configurations and thus prevent stuck symbol behavior.
 
+config MBEDTLS_VERSION_MAJOR
+	int
+	default 4
+
+config MBEDTLS_VERSION_MINOR
+	int
+	default 0
+
+config MBEDTLS_VERSION_PATCH
+	int
+	default 0
+
 rsource "Kconfig.psa.auto"
 rsource "Kconfig.psa.logic"
 
