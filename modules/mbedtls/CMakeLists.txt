@@ -67,6 +67,25 @@ if(CONFIG_MBEDTLS)
       set(MBEDTLS_EXPORT_REMOVED_HEADERS  ON)
     endif()
 
+    # == DIRTY FIX ==
+    # This is required because ESP32 drivers for BT and WiFi still rely on legacy
+    # crypto.
+    if(CONFIG_ESP32_BT_LE_CRYPTO_STACK_MBEDTLS OR CONFIG_ESP32_WIFI_MBEDTLS_CRYPTO)
+      target_sources(builtin PRIVATE ${ZEPHYR_MBEDTLS_MODULE_DIR}/tf-psa-crypto/removed/ecdh.c)
+      target_include_directories(builtin PRIVATE ${ZEPHYR_MBEDTLS_MODULE_DIR}/tf-psa-crypto/removed)
+      target_compile_definitions(builtin PRIVATE
+        # Setting legacy build symbols is not allowed so we need to set this
+        # to bypass the check.
+        -DTF_PSA_CRYPTO_CONFIG_CHECK_BYPASS
+        -DMBEDTLS_ENTROPY_C
+        -DMBEDTLS_BIGNUM_C
+        -DMBEDTLS_ECP_C
+        -DMBEDTLS_ECDH_C
+        -DMBEDTLS_ECP_DP_SECP256R1_ENABLED
+      )
+      set(MBEDTLS_EXPORT_REMOVED_HEADERS  ON)
+    endif()
+
     # Linking to "zephyr_interface" doesn't work in these case because these
     # are object libraries so properties are NOT propagated. We need to
     # explicitly do this.
