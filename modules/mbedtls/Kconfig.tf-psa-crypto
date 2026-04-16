@@ -355,7 +355,7 @@ config MBEDTLS_HAVE_ASM
 
 config MBEDTLS_ENTROPY_C
 	bool "Mbed TLS entropy accumulator"
-	depends on MBEDTLS_SHA256 || MBEDTLS_SHA384 || MBEDTLS_SHA512
+	select MBEDTLS_SHA256 if !(MBEDTLS_SHA384 || MBEDTLS_SHA512)
 	help
 	  This module gathers entropy data from enabled entropy sources. It's
 	  mostly used in conjunction with CTR_DRBG or HMAC_DRBG to create
