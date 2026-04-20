@@ -296,8 +296,8 @@
 #define MBEDTLS_BIGNUM_C
 #endif
 
-#if defined(MBEDTLS_RSA_C) || \
-    defined(MBEDTLS_X509_USE_C)
+#if defined(CONFIG_MBEDTLS_RSA_C) || \
+    defined(CONFIG_MBEDTLS_X509_USE_C)
 #define MBEDTLS_OID_C
 #endif
 
