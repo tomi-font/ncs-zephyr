@@ -839,6 +839,14 @@ TESTDATA_13 = [
     ),
     (
         None,
+        'ironside_te',
+        'product',
+        None,
+        ['west', 'flash', '--no-rebuild', '-d', '$build_dir',
+         '--runner', 'ironside_te', 'param1', 'param2', '--', '--dev-id', 12345]
+    ),
+    (
+        None,
         'openocd',
         'STM32 STLink',
         None,
@@ -907,7 +915,7 @@ TESTDATA_13_2 = [(True), (False)]
     TESTDATA_13,
     ids=['default', '--west-flash', 'one west flash value',
          'multiple west flash values', 'generic runner', 'pyocd',
-         'nrfjprog', 'openocd, STM32 STLink', 'openocd, STLINK-v3',
+         'nrfjprog', 'ironside_te', 'openocd, STM32 STLink', 'openocd, STLINK-v3',
          'openocd, EDBG CMSIS-DAP', 'jlink', 'stm32cubeprogrammer',
          'flash_command', 'flash_command with args']
 )
