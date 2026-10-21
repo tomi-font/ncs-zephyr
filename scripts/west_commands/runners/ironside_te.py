@@ -4,7 +4,10 @@
 
 '''Runner for flashing an application booted by IronSide TE.'''
 
+import json
 import subprocess
+import sys
+from pathlib import Path
 
 from runners.nrf_common import ErrNotAvailableBecauseProtection, ErrVerify
 from runners.nrfutil import NrfUtilBinaryRunner
@@ -15,6 +18,14 @@ from runners.nrfutil import NrfUtilBinaryRunner
 APP_PARTITIONS = ('slot0_partition', 'dfubank_partition', 'storage_partition')
 
 REINSTALL = 'ironsdk/scripts/ironside_install.py <bundle> --force'
+
+# PSA lifecycle states in which the debugger may program the application over
+# SWD. In every other state the application partition is not writable from the
+# debugger, and the application is installed through IronSide DFU instead.
+SWD_LIFECYCLES = {
+    0x1000: 'Open',
+    0x2000: 'PRoT Provisioning',
+}
 
 RECOVER_REFUSED = f'''--recover is not available on a target running IronSide TE.
 
@@ -35,13 +46,20 @@ refused after this erase. To clear that too, reinstall IronSide TE:
 
   {REINSTALL}'''
 
-PROTECTED = f'''Flashing failed because the target is protected.
+PROTECTED = f'''Flashing over SWD failed because the target is protected.
 
-A protected device refuses erases that are not authenticated. A reinstall
-issues an authenticated one before it programs anything, and needs the keyset
-the device was provisioned with, named by --keyset:
+A Secured device is flashed through IronSide DFU instead, which this runner
+picks by itself with --flash-path=auto, the default:
+
+  west flash --flash-path=dfu
+
+Reinstalling IronSide TE removes the protection along with everything else on
+the device, and needs the keyset the device was provisioned with:
 
   {REINSTALL} --keyset <keyset>'''
+
+DFU_ERASE_IGNORED = '''IronSide DFU writes the application in place and
+erases nothing else, so --erase and --erase-mode have no effect here.'''
 
 UICR_IN_IMAGE = '''The image has data in the UICR region and the verify failed,
 which usually means the UICR was not erased first. Here it cannot be: the UICR
@@ -51,11 +69,24 @@ configuration belongs to IronSide TE.'''
 class IronSideTEBinaryRunner(NrfUtilBinaryRunner):
     '''Runner front-end for nrfutil on a target booted by IronSide TE.
 
-    Flashing is unchanged from the nrfutil runner. What differs is the reach of
-    the two options that erase beyond the image: a chip erase and a recover
-    would both take IronSide TE and the write-once UICR configuration with
-    them, leaving a device that only a reinstall brings back.
+    In the Open and PRoT Provisioning lifecycle states, flashing is unchanged
+    from the nrfutil runner. What differs is the reach of the two options that
+    erase beyond the image: a chip erase and a recover would both take IronSide
+    TE and the write-once UICR configuration with them, leaving a device that
+    only a reinstall brings back.
+
+    In every other state, such as Secured, the debugger cannot write the
+    application partition, so the image is installed through IronSide DFU with
+    the IronSDK app_update.py instead.
     '''
+
+    def __init__(self, cfg, *args, flash_path='auto', keyset=None,
+                 ironsdk_dir=None, **kwargs):
+        super().__init__(cfg, *args, **kwargs)
+
+        self.flash_path = flash_path
+        self.keyset = keyset
+        self.ironsdk_dir = Path(ironsdk_dir) if ironsdk_dir else None
 
     @classmethod
     def name(cls):
@@ -69,7 +100,26 @@ class IronSideTEBinaryRunner(NrfUtilBinaryRunner):
                    tool_opt=args.tool_opt, force=args.force,
                    recover=args.recover,
                    ext_mem_config_file=args.ext_mem_config_file,
-                   dry_run=args.dry_run)
+                   dry_run=args.dry_run, flash_path=args.flash_path,
+                   keyset=args.keyset, ironsdk_dir=args.ironsdk_dir)
+
+    @classmethod
+    def do_add_parser(cls, parser):
+        super().do_add_parser(parser)
+
+        parser.add_argument('--flash-path', choices=('auto', 'swd', 'dfu'),
+                            default='auto',
+                            help='''how to install the application: swd
+                            programs it with nrfutil, dfu uploads it through
+                            IronSide DFU, and auto (the default) reads the
+                            lifecycle state over ADAC and uses swd in Open
+                            and PRoT Provisioning, dfu otherwise''')
+        parser.add_argument('--keyset',
+                            help='''IronSDK key source the image was signed
+                            with, as keyring:NAME or dir:PATH; the dfu path
+                            encrypts the image with its OTA key''')
+        parser.add_argument('--ironsdk-dir',
+                            help='IronSDK root, holding scripts/')
 
     def do_run(self, command, **kwargs):
         # Refused here rather than in recover_target(), so that it fails before
@@ -77,7 +127,107 @@ class IronSideTEBinaryRunner(NrfUtilBinaryRunner):
         if self.recover:
             raise RuntimeError(RECOVER_REFUSED)
 
+        if command == 'flash':
+            # Twister passes --dev-id, and hardware maps that predate that
+            # pass it again through runner_params: it is still one board.
+            if isinstance(self.dev_id, list) and len(set(self.dev_id)) == 1:
+                self.dev_id = self.dev_id[0]
+            self.ensure_snr()
+
+            if self._choose_flash_path() == 'dfu':
+                self._flash_dfu()
+                return
+
         super().do_run(command, **kwargs)
+
+    def _choose_flash_path(self):
+        if self.dry_run:
+            path = 'swd' if self.flash_path == 'auto' else self.flash_path
+            self.logger.info(f'Dry run: flashing through {path}, without '
+                             'reading the lifecycle state.')
+            return path
+
+        # Every ADAC command is normally a session of its own, left with a reset
+        # into a normal boot, and each of those boots the old application, whose
+        # output a test harness already on the console takes for the new one's.
+        # One session reads the lifecycle state and leaves into the DFU agent
+        # instead, which waits there for either flash path.
+        self._adac('enter')
+        try:
+            lifecycle = None
+            if self.flash_path == 'auto':
+                lifecycle = self._read_lifecycle()
+            self._adac('--command-only', 'boot-mode', 'dfu')
+        finally:
+            self._adac('exit')
+
+        if self.flash_path != 'auto':
+            self.logger.info(f'Flashing through {self.flash_path}, as requested.')
+            return self.flash_path
+
+        state = SWD_LIFECYCLES.get(lifecycle)
+        if state:
+            self.logger.info(f'Lifecycle state {state} (0x{lifecycle:04x}): '
+                             'flashing over SWD.')
+            return 'swd'
+
+        self.logger.info(f'Lifecycle state 0x{lifecycle:04x} does not allow '
+                         'programming over SWD: flashing through IronSide DFU.')
+        return 'dfu'
+
+    def _read_lifecycle(self):
+        '''Return the PSA lifecycle state that ADAC discovery reports. The
+        CTRL-AP that carries ADAC is reachable in every lifecycle state.'''
+        out = self._adac('--command-only', '--json', 'discovery')
+
+        try:
+            return int(json.loads(out)['psa_lifecycle'])
+        except (ValueError, KeyError, TypeError) as e:
+            raise RuntimeError(
+                f'Could not read the lifecycle state from ADAC discovery: {out!r}. '
+                'Pass --flash-path=swd or --flash-path=dfu to skip it.') from e
+
+    def _flash_dfu(self):
+        if not self.keyset:
+            raise RuntimeError(
+                'Flashing through IronSide DFU encrypts the image with the OTA '
+                'key of its keyset, and no --keyset was given. The build passes '
+                'CONFIG_IRONSIDE_TE_KEYSET here by itself.')
+
+        if self.erase or self.erase_mode:
+            self.logger.warning(DFU_ERASE_IGNORED)
+
+        self.ensure_output('hex')
+        self.logger.info(f'Flashing file: {self.hex_}')
+
+        # The DFU agent is already up, so app_update.py only uploads the image
+        # over its SMP port and resets into the new application.
+        self.check_call([sys.executable, str(self._ironsdk_script('app_update.py')),
+                         self.hex_, '--keyset', self.keyset,
+                         '--serial-number', self._dev_id(),
+                         '--skip-adac-bootmode-set'])
+
+    def _adac(self, *args):
+        return self.check_output([sys.executable, str(self._ironsdk_script('adac.py')),
+                                  '--serial-number', self._dev_id(), *args])
+
+    def _ironsdk_script(self, name):
+        if self.ironsdk_dir is None:
+            raise RuntimeError('The IronSDK location is unknown; pass --ironsdk-dir.')
+
+        script = self.ironsdk_dir / 'scripts' / name
+        if not script.is_file():
+            raise RuntimeError(f'{script} not found; is --ironsdk-dir the IronSDK root?')
+
+        return script
+
+    def _dev_id(self):
+        # The IronSDK tools take a single board; ensure_snr() resolved it.
+        if isinstance(self.dev_id, list):
+            raise RuntimeError('Flashing several IronSide TE devices at once is '
+                               'not supported; pass a single --dev-id.')
+
+        return self.dev_id
 
     def flush(self, force=False):
         # The base class explains both of these failures by pointing at
